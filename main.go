@@ -674,7 +674,7 @@ func executeLinter(state *linterState) error {
 	}
 
 	if err != nil {
-		debug("warning: %s returned %s", command, err)
+		debug("warning: %s returned %s: %s", command, err, buf.String())
 	}
 
 	processOutput(state, buf.Bytes())
@@ -793,7 +793,6 @@ func findVendoredLinters() string {
 		}
 	}
 	return ""
-
 }
 
 // Go 1.8 compatible GOPATH.
