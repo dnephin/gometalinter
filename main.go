@@ -36,6 +36,7 @@ var (
 	vendoredSearchPaths = [][]string{
 		{"github.com", "alecthomas", "gometalinter", "_linters"},
 		{"gopkg.in", "alecthomas", "gometalinter.v1", "_linters"},
+		{"gopkg.in", "dnephin", "gometalinter.v1", "_linters"},
 	}
 )
 
