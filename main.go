@@ -720,24 +720,20 @@ func executeLinter(state *linterState, args []string) error {
 	// Wait for process to complete or deadline to expire.
 	select {
 	case <-done:
-
+		if err != nil {
+			debug("warning: %s returned %s\n%s", command, err, buf.String())
+		}
 	case <-state.deadline:
-		err = fmt.Errorf("deadline exceeded by linter %s (try increasing --deadline)",
-			state.Name)
 		kerr := cmd.Process.Kill()
 		if kerr != nil {
 			warning("failed to kill %s: %s", state.Name, kerr)
 		}
-		return err
-	}
-
-	if err != nil {
-		debug("warning: %s returned %s: %s", command, err, buf.String())
+		return fmt.Errorf("deadline exceeded by linter %s (try increasing --deadline)",
+			state.Name)
 	}
 
 	processOutput(state, buf.Bytes())
-	elapsed := time.Since(start)
-	debug("%s linter took %s", state.Name, elapsed)
+	debug("%s linter took %s", state.Name, time.Since(start))
 	return nil
 }
 
