@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/shlex"
 	"gopkg.in/alecthomas/kingpin.v3-unstable"
+	"context"
 )
 
 // Severity of linter message.
@@ -426,9 +427,9 @@ func runLinters(linters map[string]*Linter, paths []string, concurrency int, exc
 		vars["tests"] = "-t"
 	}
 
+	deadline := time.Now().Add(config.Deadline)
 	wg := &sync.WaitGroup{}
 	for _, linter := range linters {
-		deadline := time.After(config.Deadline)
 		state := &linterState{
 			Linter:   linter,
 			issues:   incomingIssues,
@@ -639,7 +640,7 @@ type linterState struct {
 	vars     Vars
 	exclude  *regexp.Regexp
 	include  *regexp.Regexp
-	deadline <-chan time.Time
+	deadline time.Time
 }
 
 func (l *linterState) Paths() []string {
@@ -701,9 +702,11 @@ func executeLinter(state *linterState, args []string) error {
 
 	start := time.Now()
 	debug("executing %s", strings.Join(args, " "))
+
+	ctx, _ := context.WithDeadline(context.Background(), state.deadline)
 	buf := bytes.NewBuffer(nil)
 	command := args[0]
-	cmd := exec.Command(command, args[1:]...) // nolint: gas
+	cmd := exec.CommandContext(ctx, command, args[1:]...) // nolint: gas
 	cmd.Stdout = buf
 	cmd.Stderr = buf
 	err := cmd.Start()
@@ -711,25 +714,12 @@ func executeLinter(state *linterState, args []string) error {
 		return fmt.Errorf("failed to execute linter %s: %s", command, err)
 	}
 
-	done := make(chan bool)
-	go func() {
-		err = cmd.Wait()
-		done <- true
-	}()
-
-	// Wait for process to complete or deadline to expire.
-	select {
-	case <-done:
-		if err != nil {
-			debug("warning: %s returned %s\n%s", command, err, buf.String())
-		}
-	case <-state.deadline:
-		kerr := cmd.Process.Kill()
-		if kerr != nil {
-			warning("failed to kill %s: %s", state.Name, kerr)
-		}
-		return fmt.Errorf("deadline exceeded by linter %s (try increasing --deadline)",
-			state.Name)
+	err = cmd.Wait()
+	switch {
+	case err == context.DeadlineExceeded:
+		return fmt.Errorf("deadline exceeded by linter %s (try increasing --deadline)", state.Name)
+	case err != nil:
+		debug("warning: %s returned %s\n%s", command, err, buf.String())
 	}
 
 	processOutput(state, buf.Bytes())
