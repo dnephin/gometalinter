@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gopkg.in/alecthomas/kingpin.v3-unstable"
+	"io/ioutil"
 )
 
 var (
@@ -34,7 +35,7 @@ func setupFlags(app *kingpin.Application) {
 	app.Flag("severity", "Map of linter severities.").PlaceHolder("LINTER:SEVERITY").StringMapVar(&config.Severity)
 	app.Flag("disable-all", "Disable all linters.").Action(disableAllAction).Bool()
 	app.Flag("enable-all", "Enable all linters.").Action(enableAllAction).Bool()
-	app.Flag("format", "Output format.").PlaceHolder(config.Format).StringVar(&config.Format)
+	app.Flag("format", "Output format.").PlaceHolder(defaultIssueFormat).Action(validateFormatFlag).String()
 	app.Flag("vendored-linters", "Use vendored linters (recommended).").BoolVar(&config.VendoredLinters)
 	app.Flag("fast", "Only run fast linters.").BoolVar(&config.Fast)
 	app.Flag("install", "Attempt to install all known linters.").Short('i').BoolVar(&config.Install)
@@ -114,6 +115,27 @@ func enableAllAction(app *kingpin.Application, element *kingpin.ParseElement, ct
 	return nil
 }
 
+func validateFormatFlag(app *kingpin.Application, element *kingpin.ParseElement, ctx *kingpin.ParseContext) error {
+	config.Format, err := issueFormatTemplate(*element.Value)
+	if err != nil {
+		return err
+	}
+	config.Format = jsonTextTemplate(*tmpl)
+	return nil
+}
+
+func issueFormatTemplate(format string) (jsonTextTemplate, error) {
+	tmpl, err := template.New("output").Parse(format)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tmpl.Execute(ioutil.Discard, Issue{}); err != nil {
+		return nil, err
+	}
+	return tmpl, err
+}
+
 func debug(format string, args ...interface{}) {
 	if config.Debug {
 		fmt.Fprintf(os.Stderr, "DEBUG: "+format+"\n", args...)
@@ -183,7 +205,7 @@ Severity override map (default is "warning"):
 	} else if config.Checkstyle {
 		status |= outputToCheckstyle(issues)
 	} else {
-		status |= outputToConsole(issues)
+		status |= outputToConsole(issues, config.Format)
 	}
 	for err := range errch {
 		warning("%s", err)
@@ -200,10 +222,6 @@ func processConfig(config *Config) (include *regexp.Regexp, exclude *regexp.Rege
 	for name, definition := range config.Linters {
 		linterDefinitions[name] = definition
 	}
-
-	tmpl, err := template.New("output").Parse(config.Format)
-	kingpin.FatalIfError(err, "invalid format %q", config.Format)
-	formatTemplate = tmpl
 
 	// Linters are by their very nature, short lived, so disable GC.
 	// Reduced (user) linting time on kingpin from 0.97s to 0.64s.
@@ -253,7 +271,7 @@ func outputToConsole(issues chan *Issue) int {
 		if config.Errors && issue.Severity != Error {
 			continue
 		}
-		fmt.Println(issue.String())
+		fmt.Println(issue.Format(config.Format))
 		status = 1
 	}
 	return status

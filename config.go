@@ -24,7 +24,7 @@ type Config struct { // nolint: aligncheck
 	MessageOverride map[string]string
 	Severity        map[string]string
 	VendoredLinters bool
-	Format          string
+	Format          jsonTextTemplate
 	Fast            bool
 	Install         bool
 	Update          bool
@@ -70,13 +70,32 @@ func (td *jsonDuration) Duration() time.Duration {
 	return time.Duration(*td)
 }
 
+type jsonTextTemplate template.Template
+
+func (td *jsonTextTemplate) UnmarshalJSON(raw []byte) error {
+	var asString string
+	if err := json.Unmarshal(raw, &asString); err != nil {
+		return err
+	}
+	tmpl, err := issueFormatTemplate(asString)
+	if err != nil {
+		return err
+	}
+	*td = jsonTextTemplate(*tmpl)
+	return nil
+}
+
+func (td *jsonTextTemplate) Template() template.Template {
+	return template.Template(*td)
+}
+
+var defaultIssueFormat = "{{.Path}}:{{.Line}}:{{if .Col}}{{.Col}}{{end}}:{{.Severity}}: {{.Message}} ({{.Linter}})"
+
 // Configuration defaults.
 var (
 	vetRe = `^(?:vet:.*?\.go:\s+(?P<path>.*?\.go):(?P<line>\d+):(?P<col>\d+):\s*(?P<message>.*))|(?:(?P<path>.*?\.go):(?P<line>\d+):\s*(?P<message>.*))$`
 
-	// TODO: should be a field on Config struct
-	formatTemplate = &template.Template{}
-	installMap     = map[string]string{
+	installMap = map[string]string{
 		"aligncheck":  "github.com/opennota/check/cmd/aligncheck",
 		"deadcode":    "github.com/tsenart/deadcode",
 		"dupl":        "github.com/mibk/dupl",
@@ -158,8 +177,9 @@ var (
 		"vetshadow":   `go tool vet --shadow:` + vetRe,
 	}
 
+	defaultIssueFormatTmpl, _ = issueFormatTemplate(defaultIssueFormat)
 	config = &Config{
-		Format: "{{.Path}}:{{.Line}}:{{if .Col}}{{.Col}}{{end}}:{{.Severity}}: {{.Message}} ({{.Linter}})",
+		Format: jsonTextTemplate(defaultIssueFormatTmpl),
 
 		Severity: map[string]string{
 			"gotype":  "error",

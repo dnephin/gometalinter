@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/google/shlex"
@@ -59,9 +60,9 @@ type Issue struct {
 	Message  string   `json:"message"`
 }
 
-func (i *Issue) String() string {
+func (i *Issue) Format(tmpl *template.Template) string {
 	buf := new(bytes.Buffer)
-	err := formatTemplate.Execute(buf, i)
+	err := tmpl.Execute(buf, i)
 	kingpin.FatalIfError(err, "Invalid output format")
 	return buf.String()
 }
@@ -276,10 +277,11 @@ func processOutput(state *linterState, out []byte) {
 		} else {
 			issue.Severity = Warning
 		}
-		if state.exclude != nil && state.exclude.MatchString(issue.String()) {
+		formatted := issue.Format(config.Format)
+		if state.exclude != nil && state.exclude.MatchString(formatted) {
 			continue
 		}
-		if state.include != nil && !state.include.MatchString(issue.String()) {
+		if state.include != nil && !state.include.MatchString(formatted) {
 			continue
 		}
 		state.issues <- issue
