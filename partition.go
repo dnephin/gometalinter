@@ -146,7 +146,7 @@ func packageNameFromPath(path string) (string, error) {
 	}
 	for _, gopath := range getGoPathList() {
 		rel, err := filepath.Rel(filepath.Join(gopath, "src"), path)
-		if err != nil {
+		if err != nil || rel[0] == '.' {
 			continue
 		}
 		return rel, nil

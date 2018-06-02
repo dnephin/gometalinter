@@ -80,15 +80,20 @@ func TestPartitionToMaxArgSizeWithFileGlobsNoFiles(t *testing.T) {
 }
 
 func TestPathsToPackagePaths(t *testing.T) {
-	root := "/fake/root"
+	root := "/fake/root:/other/root"
 	defer fakeGoPath(t, root)()
 
 	packagePaths, err := pathsToPackagePaths([]string{
-		filepath.Join(root, "src", "example.com", "foo"),
+		filepath.FromSlash("/fake/root/src/example.com/foo"),
+		filepath.FromSlash("/other/root/src/other.com/bar"),
 		"./relative/package",
 	})
 	require.NoError(t, err)
-	expected := []string{"example.com/foo", "./relative/package"}
+	expected := []string{
+		"example.com/foo",
+		"other.com/bar",
+		"./relative/package",
+	}
 	assert.Equal(t, expected, packagePaths)
 }
 
